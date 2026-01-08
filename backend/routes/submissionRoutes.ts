@@ -1,45 +1,52 @@
-const express = require('express');
-const multer = require('multer');
-const { v4: uuidv4 } = require('uuid');
-const path = require('path');
-
-const nodemailer = require('nodemailer');
-const supabase = require('../config/supabase');
+import express, { Request, Response } from 'express';
+import multer from 'multer';
+import { v4 as uuidv4 } from 'uuid';
+import path from 'path';
+import nodemailer from 'nodemailer';
+import supabase from '../config/supabase';
 
 const router = express.Router();
 
-// Multer Configuration
+// Multer Yapılandırması: Dosya yükleme işlemleri için bellek içi depolama ayarları
 const storage = multer.memoryStorage();
 
-const fileFilter = (req, file, cb) => {
+const fileFilter = (req: Request, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
     const allowedTypes = ['application/pdf', 'image/jpeg', 'image/png'];
     if (allowedTypes.includes(file.mimetype)) {
         cb(null, true);
     } else {
-        cb(new Error('Invalid file type. Only PDF, JPG, and PNG are allowed.'), false);
+        cb(new Error('Invalid file type. Only PDF, JPG, and PNG are allowed.'));
     }
 };
 
 const upload = multer({
     storage: storage,
-    limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
-    fileFilter: fileFilter
+    limits: { fileSize: 5 * 1024 * 1024 }, // 5MB dosya boyutu limiti
+    fileFilter: fileFilter,
 });
 
-router.post('/submit-art', upload.single('file'), async (req, res) => {
+interface SubmissionBody {
+    artist_name: string;
+    description: string;
+    email: string;
+}
+
+router.post('/submit-art', upload.single('file'), async (req: Request, res: Response): Promise<void> => {
     try {
-        const { artist_name, description, email } = req.body;
+        const { artist_name, description, email } = req.body as SubmissionBody;
         const file = req.file;
 
         if (!file) {
-            return res.status(400).json({ error: 'No file uploaded' });
+            res.status(400).json({ error: 'No file uploaded' });
+            return;
         }
 
         if (!artist_name || !email) {
-            return res.status(400).json({ error: 'Artist name and email are required' });
+            res.status(400).json({ error: 'Artist name and email are required' });
+            return;
         }
 
-        // Determine folder based on file type
+        // Dosya türüne göre uygun klasörü belirle
         let folder = 'others';
         const ext = path.extname(file.originalname).toLowerCase();
 
@@ -53,7 +60,7 @@ router.post('/submit-art', upload.single('file'), async (req, res) => {
 
         const fileName = `${folder}/${uuidv4()}${ext}`;
 
-        // Upload to Supabase Storage
+        // Supabase Storage servisine dosya yükleme işlemi
         const { data: uploadData, error: uploadError } = await supabase.storage
             .from('artworks')
             .upload(fileName, file.buffer, {
@@ -64,14 +71,14 @@ router.post('/submit-art', upload.single('file'), async (req, res) => {
             throw uploadError;
         }
 
-        // Get Public URL
+        // Yüklenen dosyanın herkese açık (public) erişim bağlantısını al
         const { data: publicUrlData } = supabase.storage
             .from('artworks')
             .getPublicUrl(fileName);
 
         const publicUrl = publicUrlData.publicUrl;
 
-        // Save to Database
+        // Başvuru bilgilerini Supabase veritabanına kaydet
         const { data: insertData, error: insertError } = await supabase
             .from('submissions')
             .insert([
@@ -88,11 +95,11 @@ router.post('/submit-art', upload.single('file'), async (req, res) => {
             throw insertError;
         }
 
-        // Email Notification
+        // Başvuru sahibine bilgilendirme e-postası gönder
         const transporter = nodemailer.createTransport({
             host: process.env.EMAIL_HOST,
-            port: process.env.EMAIL_PORT,
-            secure: false, // true for 465, false for other ports
+            port: Number(process.env.EMAIL_PORT),
+            secure: false, // 465 portu için true, diğer portlar için false kullanın
             auth: {
                 user: process.env.EMAIL_USER,
                 pass: process.env.EMAIL_PASS,
@@ -110,18 +117,18 @@ router.post('/submit-art', upload.single('file'), async (req, res) => {
             console.log('Email sent successfully');
         } catch (emailError) {
             console.error('Failed to send email:', emailError);
-            // We don't want to fail the request if email sending fails, just log it.
+            // E-posta gönderimi başarısız olsa bile kullanıcı başvurusunu iptal etme, sadece hatayı logla.
         }
 
         res.status(201).json({
             message: 'Submission successful',
-            data: insertData[0],
+            data: insertData ? insertData[0] : null,
         });
 
-    } catch (error) {
+    } catch (error: any) {
         console.error('Submission error:', error);
         res.status(500).json({ error: error.message || 'Internal Server Error' });
     }
 });
 
-module.exports = router;
+export default router;

@@ -4,7 +4,7 @@ import SubmissionForm from '@/components/SubmissionForm';
 export default function Home() {
   return (
     <main className="min-h-screen w-full bg-[#0a0a0a] text-white selection:bg-purple-500/30">
-      {/* Background Gradients */}
+      {/* Arka Plan Gradyanları */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-0 left-1/4 w-96 h-96 bg-purple-600/20 rounded-full blur-[128px]" />
         <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-pink-600/20 rounded-full blur-[128px]" />
